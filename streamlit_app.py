@@ -5,8 +5,6 @@ import plotly.graph_objs as go
 import openai
 from openai import OpenAI
 from sklearn.preprocessing import StandardScaler
-from pandasai import SmartDataframe
-from pandasai.llm import OpenAI as PandasAI_LLM
 
 # Initialize OpenAI client (replace with your own key)
 import os
