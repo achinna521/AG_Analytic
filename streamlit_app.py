@@ -99,14 +99,6 @@ def main():
             st.subheader("Chat with Data")
             # Query for the data
             query = st.text_area("Chat with Dataframe")
-            generate = st.button("Generate")
-            if generate:
-               if query:
-                with st.spinner("OpenAI is generating an answer, please wait..."):
-                    llm = PandasAI_LLM(api_key=api_key)
-                    query_engine = SmartDataframe(df, config={"llm": llm})
-                    answer = query_engine.chat(query)
-                    st.write(answer)
 
         # Visualization Tab
         with tab3:
