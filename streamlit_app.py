@@ -98,7 +98,7 @@ def get_openai_insights(summary):
 
 def main():
     # Set page configuration
-    st.set_page_config(page_title="Augmented Data Analysis", layout="wide")
+    st.set_page_config(page_title="Augmented Analysis", layout="wide")
 
     # Title in the main section
     st.title("📊 Augmented Data Analysis")
