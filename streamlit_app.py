@@ -98,7 +98,7 @@ def get_openai_insights(summary):
 
 def main():
     # Set page configuration
-    st.set_page_config(page_title="Augmented Analysis", layout="wide")
+    st.set_page_config(page_title="Augmented Data Analysis", layout="wide")
 
     # Title in the main section
     st.title("📊 Augmented Data Analysis")
@@ -130,8 +130,8 @@ def main():
                 st.write(df)
 
             # Basic Statistics
-            st.expander("Basic Statistics", expanded=True):
-            st.write(df.describe())
+            with st.expander("Basic Statistics", expanded=True):
+               st.write(df.describe())
 
             # AI Insights Button
             if st.button("Get AI Insights"):
@@ -142,10 +142,6 @@ def main():
 
         # Chat with Data Tab
         with tab2:
-            st.subheader("Data Preview")
-            # Data Preview in an expander
-            with st.expander("Data Preview", expanded=True):
-                st.write(df.head())
             st.subheader("Chat with Data")
             # Query for the data
             query = st.text_area("Chat with Dataframe")
