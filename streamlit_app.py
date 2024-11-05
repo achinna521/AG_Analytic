@@ -127,7 +127,7 @@ def main():
 
             # Data Preview in an expander
             with st.expander("Data Preview", expanded=True):
-                st.write(df.head())
+                st.write(df)
 
             # Basic Statistics
             st.subheader("Basic Statistics")
@@ -142,6 +142,10 @@ def main():
 
         # Chat with Data Tab
         with tab2:
+            st.subheader("Data Preview")
+            # Data Preview in an expander
+            with st.expander("Data Preview", expanded=True):
+                st.write(df)
             st.subheader("Chat with Data")
             # Query for the data
             query = st.text_area("Chat with Dataframe")
