@@ -1,40 +1,65 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objs as go
-import openai
+import plotly.express as px 
+from plotly.subplots import make_subplots
 from openai import OpenAI
-from sklearn.preprocessing import StandardScaler
 from pandasai import SmartDataframe
 from pandasai.llm import OpenAI as PandasAI_LLM
 from pandasai.responses.response_parser import ResponseParser
-
-# Initialize OpenAI client (replace with your own key)
 import os
 from dotenv import load_dotenv
 
+# Load the environment variables
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 if not api_key:
     raise ValueError('The OPENAI_API_KEY environment variable is not set. Please set it in your .env file.')
 justkey = OpenAI(api_key=api_key)
 
+# Custom Response Parser for Streamlit
 class StreamlitResponse(ResponseParser):
-    def __init__(self, context) -> None:
+    def __init__(self, context=None) -> None:
         super().__init__(context)
 
-    def format_dataframe(self,result):
+    def format_dataframe(self, result):
         st.dataframe(result["value"])
         return
 
     def format_plot(self, result):
-        st.image(result["value"])
-        return
-
-    def format_other(self,result):
-        st.write(result["value"])
-        return  
+        value = result.get("value")
         
+        if isinstance(value, list):
+            # Create a 2x2 subplot layout for multiple plots
+            fig = make_subplots(rows=2, cols=2, subplot_titles=[f"Plot {i+1}" for i in range(len(value))])
+
+            # Add each plot to the subplot layout
+            for idx, plot_value in enumerate(value):
+                row = idx // 2 + 1
+                col = idx % 2 + 1
+
+                if isinstance(plot_value, go.Figure):
+                    for trace in plot_value['data']:
+                        fig.add_trace(trace, row=row, col=col)
+
+            # Set layout properties and display the combined figure
+            fig.update_layout(height=800, width=1000, title_text="Multiple Plots")
+            st.plotly_chart(fig)
+
+        elif isinstance(value, go.Figure):
+            # Display a single figure if there is only one plot
+            st.plotly_chart(value)
+
+        elif isinstance(value, str) and os.path.isfile(value):
+            st.image(value)
+        
+        else:
+            st.write("Unexpected plot format, displaying raw output:")
+            st.write(value)
+
+    def format_other(self, result):
+        st.write(result.get("value", "No content to display"))
+
 @st.cache_data
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
@@ -73,13 +98,13 @@ def get_openai_insights(summary):
 
 def main():
     # Set page configuration
-    st.set_page_config(page_title="Augumented Data Analysis", layout="wide")
+    st.set_page_config(page_title="Augmented Data Analysis", layout="wide")
 
-    # Title
-    st.title("📊 Augumented Data Analysis")
+    # Title in the main section
+    st.title("📊 Augmented Data Analysis")
 
-    # File uploader
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    # File uploader in the sidebar
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
     if uploaded_file is not None:
         # Load the data
@@ -99,8 +124,10 @@ def main():
         # Overview Tab
         with tab1:
             st.subheader("Data Overview")
-            st.write("Data Preview:")
-            st.write(df.head())
+
+            # Data Preview in an expander
+            with st.expander("Data Preview", expanded=True):
+                st.write(df.head())
 
             # Basic Statistics
             st.subheader("Basic Statistics")
@@ -113,37 +140,62 @@ def main():
                 st.subheader("AI Generated Insights")
                 st.write(ai_insights)
 
-      # Chat with Data Tab
+        # Chat with Data Tab
         with tab2:
             st.subheader("Chat with Data")
             # Query for the data
             query = st.text_area("Chat with Dataframe")
-            generate = st.button("Generate")
-            if generate:
-               if query:
-                with st.spinner("OpenAI is generating an answer, please wait..."):
-                 llm = PandasAI_LLM(api_key=api_key)
-                query_engine = SmartDataframe(
-                    df,
-                    config={
-                        "llm": llm,
-                        "response_parser":StreamlitResponse
-                        })
-                query_engine.chat(query)
 
-        
+            if st.button("Generate Response"):
+                if query:
+                    with st.spinner("OpenAI is generating an answer, please wait..."):
+                        try:
+                            # Initialize the language model
+                            llm = PandasAI_LLM(api_key=api_key)
+                            # Create a SmartDataframe instance with custom response parser
+                            query_engine = SmartDataframe(
+                                df,
+                                config={
+                                    "llm": llm,
+                                    "response_parser": StreamlitResponse
+                                }
+                            )
+                            
+                            # Check if the query involves multiple plots
+                            if "plot 1:" in query.lower() or "plot 2:" in query.lower():
+                                plots = []
+                                plot_queries = query.lower().split("plot ")
+                                for plot_query in plot_queries[1:]:
+                                    # Extract plot instructions and ask OpenAI to generate individual plots
+                                    plot_query_text = plot_query.strip()
+                                    plot_fig = query_engine.chat(plot_query_text)
+                                    if isinstance(plot_fig, go.Figure):
+                                        plots.append(plot_fig)
+
+                                # Display in a 2x2 layout if there are multiple plots
+                                if plots:
+                                    StreamlitResponse(None).format_plot({"value": plots})
+
+                            else:
+                                # Execute single query
+                                query_engine.chat(query)
+
+                        except Exception as e:
+                            st.error(f"An error occurred: {e}")
+
         # Visualization Tab
         with tab3:
-            st.sidebar.header("Visualization Settings")
-            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            # Visualization settings wrapped in an expander within the sidebar
+            with st.sidebar.expander("Visualization Settings", expanded=True):
+                numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+                categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
 
-            # Select columns for X and Y axes
-            x_column = st.sidebar.selectbox("Select X-axis Column", numeric_cols + categorical_cols + date_cols)
-            y_columns = st.sidebar.multiselect("Select Y-axis Columns", [col for col in numeric_cols+categorical_cols if col != x_column])
+                # Select columns for X and Y axes
+                x_column = st.selectbox("Select X-axis Column", numeric_cols + categorical_cols + date_cols)
+                y_columns = st.multiselect("Select Y-axis Columns", [col for col in numeric_cols + categorical_cols if col != x_column])
 
-            # Visualization Type
-            viz_type = st.sidebar.selectbox("Select Visualization Type", ["Line Chart", "Scatter Plot", "Bar Chart", "Pie Chart", "Box Plot"])
+                # Visualization Type
+                viz_type = st.selectbox("Select Visualization Type", ["Line Chart", "Scatter Plot", "Bar Chart", "Pie Chart", "Box Plot"])
 
             # Initialize fig
             fig = None
@@ -161,7 +213,7 @@ def main():
             elif viz_type == "Bar Chart" and y_columns:
                 fig = px.bar(df, x=x_column, y=y_columns)
             elif viz_type == "Pie Chart" and categorical_cols:
-                category_column = st.sidebar.selectbox("Select Categorical Column for Pie Chart", categorical_cols)
+                category_column = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols)
                 fig = px.pie(df, names=category_column)
             elif viz_type == "Box Plot" and y_columns:
                 fig = go.Figure(data=[go.Box(y=df[col], name=col) for col in y_columns])
@@ -175,10 +227,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Requirements to install the necessary libraries
-# Create a .env file and add your OpenAI API key as follows:
-# OPENAI_API_KEY=your_openai_api_key_here
-# Run the following command to install all required libraries:
-#
-# pip install streamlit pandas plotly scikit-learn openai>=1.0.0 python-dotenv
