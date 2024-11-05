@@ -18,6 +18,22 @@ if not api_key:
     raise ValueError('The OPENAI_API_KEY environment variable is not set. Please set it in your .env file.')
 justkey = OpenAI(api_key=api_key)
 
+class StreamlitResponse(ResponseParser):
+    def __init__(self, context) -> None:
+        super().__init__(context)
+
+    def format_dataframe(self,result):
+        st.dataframe(result["value"])
+        return
+
+    def format_plot(self, result):
+        st.image(result["value"])
+        return
+
+    def format_other(self,result):
+        st.write(result["value"])
+        return  
+        
 @st.cache_data
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
@@ -96,7 +112,7 @@ def main():
                 st.subheader("AI Generated Insights")
                 st.write(ai_insights)
 
-         # Chat with Data Tab
+      # Chat with Data Tab
         with tab2:
             st.subheader("Chat with Data")
             # Query for the data
@@ -105,11 +121,16 @@ def main():
             if generate:
                if query:
                 with st.spinner("OpenAI is generating an answer, please wait..."):
-                    llm = PandasAI_LLM(api_key=api_key)
-                    query_engine = SmartDataframe(df, config={"llm": llm})
-                    answer = query_engine.chat(query)
-                    st.write(answer)
+                 llm = PandasAI_LLM(api_key=api_key)
+                query_engine = SmartDataframe(
+                    df,
+                    config={
+                        "llm": llm,
+                        "response_parser":StreamlitResponse
+                        })
+                query_engine.chat(query)
 
+        
         # Visualization Tab
         with tab3:
             st.sidebar.header("Visualization Settings")
