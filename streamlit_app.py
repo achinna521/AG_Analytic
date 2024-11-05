@@ -7,6 +7,7 @@ from openai import OpenAI
 from sklearn.preprocessing import StandardScaler
 from pandasai import SmartDataframe
 from pandasai.llm import OpenAI as PandasAI_LLM
+from pandasai.responses.response_parser import ResponseParser
 
 # Initialize OpenAI client (replace with your own key)
 import os
