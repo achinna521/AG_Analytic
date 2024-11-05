@@ -130,7 +130,7 @@ def main():
                 st.write(df)
 
             # Basic Statistics
-            st.subheader("Basic Statistics")
+            st.expander("Basic Statistics", expanded=True):
             st.write(df.describe())
 
             # AI Insights Button
@@ -145,7 +145,7 @@ def main():
             st.subheader("Data Preview")
             # Data Preview in an expander
             with st.expander("Data Preview", expanded=True):
-                st.write(df)
+                st.write(df.head())
             st.subheader("Chat with Data")
             # Query for the data
             query = st.text_area("Chat with Dataframe")
