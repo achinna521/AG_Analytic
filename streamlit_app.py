@@ -5,6 +5,8 @@ import plotly.graph_objs as go
 import openai
 from openai import OpenAI
 from sklearn.preprocessing import StandardScaler
+from pandasai import SmartDataframe
+from pandasai.llm import OpenAI as PandasAI_LLM
 
 # Initialize OpenAI client (replace with your own key)
 import os
@@ -100,7 +102,14 @@ def main():
             # Query for the data
             query = st.text_area("Chat with Dataframe")
             generate = st.button("Generate")
-                    
+            if generate:
+               if query:
+                with st.spinner("OpenAI is generating an answer, please wait..."):
+                    llm = PandasAI_LLM(api_key=api_key)
+                    query_engine = SmartDataframe(df, config={"llm": llm})
+                    answer = query_engine.chat(query)
+                    st.write(answer)
+
         # Visualization Tab
         with tab3:
             st.sidebar.header("Visualization Settings")
