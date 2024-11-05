@@ -37,7 +37,7 @@ numpy==2.1.3
 openai==1.53.1
 packaging==24.1
 pandas
-pandasai
+pandasai>=2.3.0
 pillow==10.4.0
 plotly==5.24.1
 protobuf==5.28.3
