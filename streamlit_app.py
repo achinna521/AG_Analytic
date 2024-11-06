@@ -23,7 +23,10 @@ class StreamlitResponse(ResponseParser):
         super().__init__(context)
 
     def format_dataframe(self, result):
-        st.dataframe(result["value"])
+        if isinstance(result["value"], pd.DataFrame):
+            st.dataframe(result["value"])
+        else:
+            st.write("No valid DataFrame to display.")
         return
 
     def format_plot(self, result):
@@ -58,11 +61,25 @@ class StreamlitResponse(ResponseParser):
             st.write(value)
 
     def format_other(self, result):
-        st.write(result.get("value", "No content to display"))
+        value = result.get("value", "No content to display")
+        if value is None:
+            st.write("The response returned no data. Please check your query or try again with different parameters.")
+        elif isinstance(value, str):
+            st.write(value)
+        elif isinstance(value, dict):
+            st.write(value)
+        else:
+            st.write("Unexpected content type, displaying raw output:")
+            st.write(value)
 
 @st.cache_data
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
+
+@st.cache_data
+def get_ai_insights_cached(df):
+    summary = get_data_summary(df)
+    return get_openai_insights(summary)
 
 def get_data_summary(df):
     """Generate a summary of the dataset to send to OpenAI for suggestions."""
@@ -96,6 +113,12 @@ def get_openai_insights(summary):
     except Exception as e:
         return f"Error fetching insights from OpenAI: {e}"
 
+def parse_multiple_queries(query):
+    """Parse the user query into multiple individual queries for multiple plots."""
+    queries = query.split("plot ")
+    parsed_queries = [q.strip() for q in queries if q.strip()]
+    return parsed_queries
+
 def main():
     # Set page configuration
     st.set_page_config(page_title="Augmented Data Analysis", layout="wide")
@@ -111,13 +134,11 @@ def main():
         df = load_data(uploaded_file)
 
         # Convert 'Date' column to datetime if it exists
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df = df.dropna(subset=['Date'])
+        date_columns = st.sidebar.multiselect("Select Date Columns (if any)", df.columns[df.dtypes == 'object'], help="Select columns that should be treated as dates.")
+        for col in date_columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+            df = df.dropna(subset=[col])
         
-        # Update list of date columns
-        date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
-
         # Tabs Layout
         tab1, tab2, tab3 = st.tabs(["Overview", "Chat with Data", "Visualizations"])
 
@@ -135,8 +156,7 @@ def main():
 
             # AI Insights Button
             if st.button("Get AI Insights"):
-                summary = get_data_summary(df)
-                ai_insights = get_openai_insights(summary)
+                ai_insights = get_ai_insights_cached(df)
                 st.subheader("AI Generated Insights")
                 st.write(ai_insights)
 
@@ -161,24 +181,25 @@ def main():
                                 }
                             )
                             
-                            # Check if the query involves multiple plots
-                            if "plot 1:" in query.lower() or "plot 2:" in query.lower():
-                                plots = []
-                                plot_queries = query.lower().split("plot ")
-                                for plot_query in plot_queries[1:]:
-                                    # Extract plot instructions and ask OpenAI to generate individual plots
-                                    plot_query_text = plot_query.strip()
-                                    plot_fig = query_engine.chat(plot_query_text)
-                                    if isinstance(plot_fig, go.Figure):
-                                        plots.append(plot_fig)
-
-                                # Display in a 2x2 layout if there are multiple plots
-                                if plots:
-                                    StreamlitResponse(None).format_plot({"value": plots})
-
-                            else:
-                                # Execute single query
-                                query_engine.chat(query)
+                            # Parse the query into multiple sub-queries if needed
+                            parsed_queries = parse_multiple_queries(query)
+                            
+                            for sub_query in parsed_queries:
+                                response = query_engine.chat(sub_query)
+                                if response is None:
+                                    st.write("")
+                                elif isinstance(response, pd.DataFrame):
+                                    st.dataframe(response)
+                                elif isinstance(response, str):
+                                    st.write(response)
+                                elif isinstance(response, dict) and "type" in response and "value" in response:
+                                    if response["type"] == "plot":
+                                        StreamlitResponse().format_plot(response)
+                                    else:
+                                        StreamlitResponse().format_other(response)
+                                else:
+                                    st.write("Unexpected response format. Here is the raw response:")
+                                    st.write(response)
 
                         except Exception as e:
                             st.error(f"An error occurred: {e}")
@@ -191,39 +212,41 @@ def main():
                 categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
 
                 # Select columns for X and Y axes
-                x_column = st.selectbox("Select X-axis Column", numeric_cols + categorical_cols + date_cols)
-                y_columns = st.multiselect("Select Y-axis Columns", [col for col in numeric_cols + categorical_cols if col != x_column])
+                x_columns = st.multiselect("Select X-axis Columns", numeric_cols + categorical_cols + date_columns)
+                y_columns = st.multiselect("Select Y-axis Columns", [col for col in numeric_cols + categorical_cols if col not in x_columns])
 
                 # Visualization Type
                 viz_type = st.selectbox("Select Visualization Type", ["Line Chart", "Scatter Plot", "Bar Chart", "Pie Chart", "Box Plot"])
 
             # Initialize fig
-            fig = None
+            figs = []
 
             # Create Visualization
             st.subheader(f"{viz_type} Visualization")
-            if viz_type == "Line Chart" and y_columns:
-                if pd.api.types.is_datetime64_any_dtype(df[x_column]):
-                    df_grouped = df.groupby(pd.Grouper(key=x_column, freq='M')).sum().reset_index()
-                    fig = px.line(df_grouped, x=x_column, y=y_columns, title='Line Chart (Monthly Aggregated)')
+            for x_column in x_columns:
+                fig = None
+                if viz_type == "Line Chart" and y_columns:
+                    if pd.api.types.is_datetime64_any_dtype(df[x_column]):
+                        df_grouped = df.groupby(pd.Grouper(key=x_column, freq='M')).sum().reset_index()
+                        fig = px.line(df_grouped, x=x_column, y=y_columns, title=f'Line Chart (Monthly Aggregated) - {x_column}')
+                    else:
+                        fig = px.line(df, x=x_column, y=y_columns, title=f'Line Chart - {x_column}')
+                elif viz_type == "Scatter Plot" and y_columns:
+                    fig = px.scatter(df, x=x_column, y=y_columns, title=f'Scatter Plot - {x_column}')
+                elif viz_type == "Bar Chart" and y_columns:
+                    fig = px.bar(df, x=x_column, y=y_columns, title=f'Bar Chart - {x_column}')
+                elif viz_type == "Pie Chart" and categorical_cols:
+                    category_column = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols)
+                    fig = px.pie(df, names=category_column, title=f'Pie Chart - {category_column}')
+                elif viz_type == "Box Plot" and y_columns:
+                    fig = go.Figure(data=[go.Box(y=df[col], name=col) for col in y_columns])
+                    fig.update_layout(title=f'Box Plot of Selected Columns - {x_column}')
                 else:
-                    fig = px.line(df, x=x_column, y=y_columns)
-            elif viz_type == "Scatter Plot" and y_columns:
-                fig = px.scatter(df, x=x_column, y=y_columns)
-            elif viz_type == "Bar Chart" and y_columns:
-                fig = px.bar(df, x=x_column, y=y_columns)
-            elif viz_type == "Pie Chart" and categorical_cols:
-                category_column = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols)
-                fig = px.pie(df, names=category_column)
-            elif viz_type == "Box Plot" and y_columns:
-                fig = go.Figure(data=[go.Box(y=df[col], name=col) for col in y_columns])
-                fig.update_layout(title='Box Plot of Selected Columns')
-            else:
-                st.warning("Please select appropriate columns for the visualization.")
-
-            # Display the plot if created
-            if fig is not None:
-                st.plotly_chart(fig, use_container_width=True)
+                    st.warning("Please select appropriate columns for the visualization.")
+                
+                if fig is not None:
+                    figs.append(fig)
+                    st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
