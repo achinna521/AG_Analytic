@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objs as go
-import plotly.express as px 
-from plotly.subplots import make_subplots
+import altair as alt
 from openai import OpenAI
 from pandasai import SmartDataframe
 from pandasai.llm import OpenAI as PandasAI_LLM
@@ -29,37 +27,6 @@ class StreamlitResponse(ResponseParser):
             st.write("No valid DataFrame to display.")
         return
 
-    def format_plot(self, result):
-        value = result.get("value")
-        
-        if isinstance(value, list):
-            # Create a 2x2 subplot layout for multiple plots
-            fig = make_subplots(rows=2, cols=2, subplot_titles=[f"Plot {i+1}" for i in range(len(value))])
-
-            # Add each plot to the subplot layout
-            for idx, plot_value in enumerate(value):
-                row = idx // 2 + 1
-                col = idx % 2 + 1
-
-                if isinstance(plot_value, go.Figure):
-                    for trace in plot_value['data']:
-                        fig.add_trace(trace, row=row, col=col)
-
-            # Set layout properties and display the combined figure
-            fig.update_layout(height=800, width=1000, title_text="Multiple Plots")
-            st.plotly_chart(fig)
-
-        elif isinstance(value, go.Figure):
-            # Display a single figure if there is only one plot
-            st.plotly_chart(value)
-
-        elif isinstance(value, str) and os.path.isfile(value):
-            st.image(value)
-        
-        else:
-            st.write("Unexpected plot format, displaying raw output:")
-            st.write(value)
-
     def format_other(self, result):
         value = result.get("value", "No content to display")
         if value is None:
@@ -76,42 +43,71 @@ class StreamlitResponse(ResponseParser):
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
 
-@st.cache_data
-def get_ai_insights_cached(df):
-    summary = get_data_summary(df)
-    return get_openai_insights(summary)
-
-def get_data_summary(df):
-    """Generate a summary of the dataset to send to OpenAI for suggestions."""
+def summarize_data(df, x_column, y_columns):
+    """Generate a summary of the dataset to display in the Streamlit app."""
     summary = {
-        "columns": df.columns.tolist(),
-        "numeric_summary": df.describe().to_dict(),
-        "categorical_columns": df.select_dtypes(include=['object']).columns.tolist(),
+        "Columns Selected": x_column + ', ' + ', '.join(y_columns),
+        "Number of Rows": len(df),
+        "Number of Columns": len(df.columns),
     }
     return summary
 
-def get_openai_insights(summary):
-    """Use OpenAI to generate insights, KPIs, and visual suggestions."""
-    prompt = (
-        "You are a Business Intelligence Analyst. Given the following data summary, "
-        "generate key performance indicators (KPIs) and suggest relevant visualization types:\n"
-        f"{summary}\n"
-        "Please provide concise KPIs and visualization types."
+def create_altair_chart(df, x_column, y_columns, chart_type, time_aggregation=None):
+    """Creates Altair chart depending on the chart type and labels the values."""
+    # If the X column is a datetime and time aggregation is selected, aggregate by the chosen level
+    if pd.api.types.is_datetime64_any_dtype(df[x_column]) and time_aggregation:
+        if time_aggregation == "Year":
+            df[x_column] = df[x_column].dt.to_period("Y").dt.start_time
+        elif time_aggregation == "Month":
+            df[x_column] = df[x_column].dt.to_period("M").dt.start_time
+
+    # Summarize the data by grouping by the X column and aggregating the Y columns
+    df_summary = df.groupby(x_column)[y_columns].sum().reset_index()
+
+    base = alt.Chart(df_summary).encode(
+        x=alt.X(x_column, title=x_column),
+        tooltip=[x_column] + y_columns
     )
-    
-    try:
-        response = justkey.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a Business Intelligence Analyst."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=200,
-            temperature=0
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Error fetching insights from OpenAI: {e}"
+
+    layers = []
+    for y_column in y_columns:
+        if chart_type == "Line Chart":
+            layer = base.mark_line().encode(
+                y=alt.Y(y_column, type='quantitative', title='Value')
+            )
+        elif chart_type == "Scatter Plot":
+            layer = base.mark_circle(size=60).encode(
+                y=alt.Y(y_column, type='quantitative', title='Value')
+            )
+        elif chart_type == "Bar Chart":
+            layer = base.mark_bar().encode(
+                y=alt.Y(y_column, type='quantitative', title='Value')
+            )
+        elif chart_type == "Area Chart":
+            layer = base.mark_area().encode(
+                y=alt.Y(y_column, type='quantitative', title='Value')
+            )
+        elif chart_type == "Histogram":
+            layer = alt.Chart(df).mark_bar().encode(
+                x=alt.X(y_column, bin=True, title=y_column),
+                y=alt.Y('count()', title='Count')
+            )
+        elif chart_type == "Box Plot":
+            layer = alt.Chart(df).mark_boxplot().encode(
+                x=alt.X(x_column, title=x_column),
+                y=alt.Y(y_column, type='quantitative', title='Value')
+            )
+        else:
+            st.warning("Chart type not supported.")
+            return None
+        layers.append(layer)
+
+    chart = alt.layer(*layers).properties(
+        width=800,
+        height=400
+    )
+
+    return chart
 
 def parse_multiple_queries(query):
     """Parse the user query into multiple individual queries for multiple plots."""
@@ -121,10 +117,10 @@ def parse_multiple_queries(query):
 
 def main():
     # Set page configuration
-    st.set_page_config(page_title="Augmented Data Analysis", layout="wide")
+    st.set_page_config(page_title="Augmented Data Analysis with Altair", layout="wide")
 
     # Title in the main section
-    st.title("📊 Augmented Data Analysis")
+    st.title("📊 Augmented Data Analysis with Altair")
 
     # File uploader in the sidebar
     uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
@@ -153,12 +149,6 @@ def main():
             # Basic Statistics
             with st.expander("Basic Statistics", expanded=True):
                st.write(df.describe())
-
-            # AI Insights Button
-            if st.button("Get AI Insights"):
-                ai_insights = get_ai_insights_cached(df)
-                st.subheader("AI Generated Insights")
-                st.write(ai_insights)
 
         # Chat with Data Tab
         with tab2:
@@ -192,11 +182,6 @@ def main():
                                     st.dataframe(response)
                                 elif isinstance(response, str):
                                     st.write(response)
-                                elif isinstance(response, dict) and "type" in response and "value" in response:
-                                    if response["type"] == "plot":
-                                        StreamlitResponse().format_plot(response)
-                                    else:
-                                        StreamlitResponse().format_other(response)
                                 else:
                                     st.write("Unexpected response format. Here is the raw response:")
                                     st.write(response)
@@ -210,43 +195,32 @@ def main():
             with st.sidebar.expander("Visualization Settings", expanded=True):
                 numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
                 categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+                date_cols = df.select_dtypes(include=['datetime']).columns.tolist()
 
                 # Select columns for X and Y axes
-                x_columns = st.multiselect("Select X-axis Columns", numeric_cols + categorical_cols + date_columns)
-                y_columns = st.multiselect("Select Y-axis Columns", [col for col in numeric_cols + categorical_cols if col not in x_columns])
+                x_column = st.selectbox("Select X-axis Column", numeric_cols + categorical_cols + date_cols)
+                y_columns = st.multiselect("Select Y-axis Columns", [col for col in numeric_cols if col != x_column])
+
+                # If X-axis is a date column, allow the user to choose time aggregation level
+                time_aggregation = None
+                if x_column in date_cols:
+                    time_aggregation = st.selectbox("Select Time Aggregation Level", ["None", "Year", "Month"], index=0)
+                    if time_aggregation == "None":
+                        time_aggregation = None
 
                 # Visualization Type
-                viz_type = st.selectbox("Select Visualization Type", ["Line Chart", "Scatter Plot", "Bar Chart", "Pie Chart", "Box Plot"])
-
-            # Initialize fig
-            figs = []
+                viz_type = st.selectbox("Select Visualization Type", ["Line Chart", "Scatter Plot", "Bar Chart", "Area Chart", "Histogram", "Box Plot"])
 
             # Create Visualization
-            st.subheader(f"{viz_type} Visualization")
-            for x_column in x_columns:
-                fig = None
-                if viz_type == "Line Chart" and y_columns:
-                    if pd.api.types.is_datetime64_any_dtype(df[x_column]):
-                        df_grouped = df.groupby(pd.Grouper(key=x_column, freq='M')).sum().reset_index()
-                        fig = px.line(df_grouped, x=x_column, y=y_columns, title=f'Line Chart (Monthly Aggregated) - {x_column}')
-                    else:
-                        fig = px.line(df, x=x_column, y=y_columns, title=f'Line Chart - {x_column}')
-                elif viz_type == "Scatter Plot" and y_columns:
-                    fig = px.scatter(df, x=x_column, y=y_columns, title=f'Scatter Plot - {x_column}')
-                elif viz_type == "Bar Chart" and y_columns:
-                    fig = px.bar(df, x=x_column, y=y_columns, title=f'Bar Chart - {x_column}')
-                elif viz_type == "Pie Chart" and categorical_cols:
-                    category_column = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols)
-                    fig = px.pie(df, names=category_column, title=f'Pie Chart - {category_column}')
-                elif viz_type == "Box Plot" and y_columns:
-                    fig = go.Figure(data=[go.Box(y=df[col], name=col) for col in y_columns])
-                    fig.update_layout(title=f'Box Plot of Selected Columns - {x_column}')
-                else:
-                    st.warning("Please select appropriate columns for the visualization.")
-                
-                if fig is not None:
-                    figs.append(fig)
-                    st.plotly_chart(fig, use_container_width=True)
+            if x_column and y_columns:
+                st.subheader(f"{viz_type} Visualization")
+                summary = summarize_data(df, x_column, y_columns)
+                st.write(summary)
+                altair_chart = create_altair_chart(df, x_column, y_columns, viz_type, time_aggregation)
+                if altair_chart:
+                    st.altair_chart(altair_chart, use_container_width=True)
+            else:
+                st.warning("Please select appropriate columns for the visualization.")
 
 if __name__ == "__main__":
     main()
