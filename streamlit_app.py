@@ -27,6 +27,37 @@ class StreamlitResponse(ResponseParser):
             st.write("No valid DataFrame to display.")
         return
 
+    def format_plot(self, result):
+        value = result.get("value")
+        
+        if isinstance(value, list):
+            # Create a 2x2 subplot layout for multiple plots
+            fig = make_subplots(rows=2, cols=2, subplot_titles=[f"Plot {i+1}" for i in range(len(value))])
+
+            # Add each plot to the subplot layout
+            for idx, plot_value in enumerate(value):
+                row = idx // 2 + 1
+                col = idx % 2 + 1
+
+                if isinstance(plot_value, go.Figure):
+                    for trace in plot_value['data']:
+                        fig.add_trace(trace, row=row, col=col)
+
+            # Set layout properties and display the combined figure
+            fig.update_layout(height=800, width=1000, title_text="Multiple Plots")
+            st.plotly_chart(fig)
+
+        elif isinstance(value, go.Figure):
+            # Display a single figure if there is only one plot
+            st.plotly_chart(value)
+
+        elif isinstance(value, str) and os.path.isfile(value):
+            st.image(value)
+        
+        else:
+            st.write("Unexpected plot format, displaying raw output:")
+            st.write(value)
+
     def format_other(self, result):
         value = result.get("value", "No content to display")
         if value is None:
@@ -43,14 +74,10 @@ class StreamlitResponse(ResponseParser):
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
 
-def summarize_data(df, x_column, y_columns):
-    """Generate a summary of the dataset to display in the Streamlit app."""
-    summary = {
-        "Columns Selected": x_column + ', ' + ', '.join(y_columns),
-        "Number of Rows": len(df),
-        "Number of Columns": len(df.columns),
-    }
-    return summary
+@st.cache_data
+def get_ai_insights_cached(df):
+    summary = get_data_summary(df)
+    return get_openai_insights(summary)
 
 def create_altair_chart(df, x_column, y_columns, chart_type, time_aggregation=None):
     """Creates Altair chart depending on the chart type and labels the values."""
@@ -108,6 +135,45 @@ def create_altair_chart(df, x_column, y_columns, chart_type, time_aggregation=No
     )
 
     return chart
+def summarize_data(df, x_column, y_columns):
+    """Generate a summary of the dataset to display in the Streamlit app."""
+    summary = {
+        "Columns Selected": x_column + ', ' + ', '.join(y_columns),
+        "Number of Rows": len(df),
+        "Number of Columns": len(df.columns),
+    }
+    return summary    
+def get_data_summary(df):
+    """Generate a summary of the dataset to send to OpenAI for suggestions."""
+    summary = {
+        "columns": df.columns.tolist(),
+        "numeric_summary": df.describe().to_dict(),
+        "categorical_columns": df.select_dtypes(include=['object']).columns.tolist(),
+    }
+    return summary
+
+def get_openai_insights(summary):
+    """Use OpenAI to generate insights, KPIs, and visual suggestions."""
+    prompt = (
+        "You are a Business Intelligence Analyst. Given the following data summary, "
+        "generate key performance indicators (KPIs) and suggest relevant visualization types:\n"
+        f"{summary}\n"
+        "Please provide concise KPIs and visualization types."
+    )
+    
+    try:
+        response = justkey.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a Business Intelligence Analyst."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=200,
+            temperature=0
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error fetching insights from OpenAI: {e}"
 
 def parse_multiple_queries(query):
     """Parse the user query into multiple individual queries for multiple plots."""
@@ -149,6 +215,12 @@ def main():
             # Basic Statistics
             with st.expander("Basic Statistics", expanded=True):
                st.write(df.describe())
+                
+            # AI Insights Button
+            if st.button("Get AI Insights"):
+                ai_insights = get_ai_insights_cached(df)
+                st.subheader("AI Generated Insights")
+                st.write(ai_insights)
 
         # Chat with Data Tab
         with tab2:
