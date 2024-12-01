@@ -73,8 +73,7 @@ def get_openai_insights(summary):
         "You are a Business Intelligence Analyst. Given the following data summary, "
         "generate key performance indicators (KPIs) and suggest relevant visualization types:\n"
         f"{summary}\n"
-        "Please provide concise KPIs \n
-        \n and visualization types."
+        "Please provide concise KPIs and visualization types."
     )
     
     try:
