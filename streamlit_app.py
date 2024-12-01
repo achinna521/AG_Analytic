@@ -79,7 +79,7 @@ def get_openai_insights(summary):
     )
     
     try:
-        response = justkey.chat.completions.create(
+        response = api_key.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a Business Intelligence Analyst."},
