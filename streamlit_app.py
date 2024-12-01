@@ -72,23 +72,23 @@ def get_data_summary(df):
 def get_openai_insights(summary):
     """Use OpenAI to generate insights, KPIs, and visual suggestions."""
     prompt = (
-        "You are a Business Intelligence Analyst. Given the following data summary, "
+        "You are a data analyst assistant. Given the following data summary, "
         "generate key performance indicators (KPIs) and suggest relevant visualization types:\n"
         f"{summary}\n"
         "Please provide concise KPIs and visualization types."
     )
     
     try:
-        response = api_key.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a Business Intelligence Analyst."},
+                {"role": "system", "content": "You are a helpful data analyst."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=200,
-            temperature=0
+            temperature=0.5
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message['content'].strip()  # Update how the response is handled
     except Exception as e:
         return f"Error fetching insights from OpenAI: {e}"
 
