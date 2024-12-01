@@ -14,7 +14,8 @@ load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 if not api_key:
     raise ValueError('The OPENAI_API_KEY environment variable is not set. Please set it in your .env file.')
-justkey = OpenAI(api_key=api_key)
+
+openai.api_key = api_key
 
 # Custom Response Parser for Streamlit
 class StreamlitResponse(ResponseParser):
