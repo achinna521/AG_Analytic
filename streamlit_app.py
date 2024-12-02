@@ -109,8 +109,7 @@ def main():
                         answer = query_engine.chat(query)
                         st.write(answer)
 
-        # Visualization Tab
-        with tab3:
+       with tab3:
             st.sidebar.header("Visualization Settings")
             numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
             categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
@@ -149,6 +148,6 @@ def main():
             # Display the plot if created
             if fig is not None:
                 st.plotly_chart(fig, use_container_width=True)
-
+                
 if __name__ == "__main__":
     main()
