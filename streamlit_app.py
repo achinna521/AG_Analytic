@@ -113,7 +113,7 @@ def main():
                         chart_path = "/mount/src/ag_analytic/exports/charts/temp_chart.png"  # Path to the chart image
                         if os.path.exists(chart_path):
                             img = Image.open(chart_path)
-                            st.image(img, caption="Generated Pie Chart", use_column_width=True)
+                            st.image(img, caption="Generated Chart", use_column_width=True)
 
         # Visualization Tab
         with tab3:
