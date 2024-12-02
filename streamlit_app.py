@@ -109,6 +109,12 @@ def main():
                         answer = query_engine.chat(query)
                         st.write(answer)
 
+                        # Show the chart image (from the path you provided)
+                        chart_path = "/mount/src/ag_analytic/exports/charts/temp_chart.png"  # Path to the chart image
+                        if os.path.exists(chart_path):
+                            img = Image.open(chart_path)
+                            st.image(img, caption="Generated Pie Chart", use_column_width=True)
+
         # Visualization Tab
         with tab3:
             st.sidebar.header("Visualization Settings")
@@ -149,12 +155,6 @@ def main():
             # Display the plot if created
             if fig is not None:
                 st.plotly_chart(fig, use_container_width=True)
-
-            # Show the chart image (from the path you provided)
-            chart_path = "/mount/src/ag_analytic/exports/charts/temp_chart.png"  # Path to the chart image
-            if os.path.exists(chart_path):
-                img = Image.open(chart_path)
-                st.image(img, caption="Generated Pie Chart", use_column_width=True)
 
 if __name__ == "__main__":
     main()
