@@ -1,22 +1,23 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objs as go
 import openai
-from openai import OpenAI
 from sklearn.preprocessing import StandardScaler
 from pandasai import SmartDataframe
 from pandasai.llm import OpenAI as PandasAI_LLM
-
-# Initialize OpenAI client (replace with your own key)
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
+
+# Ensure the API key is present in your .env file
 api_key = os.getenv('OPENAI_API_KEY')
 if not api_key:
     raise ValueError('The OPENAI_API_KEY environment variable is not set. Please set it in your .env file.')
-justkey = OpenAI(api_key=api_key)
+
+# Set OpenAI API key correctly
+openai.api_key = api_key
 
 @st.cache_data
 def load_data(uploaded_file):
@@ -41,16 +42,14 @@ def get_openai_insights(summary):
     )
     
     try:
-        response = justkey.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful data analyst."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "system", "content": "You are a helpful data analyst."},
+                      {"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.5
         )
-        return response.choices[0].message.content.strip()
+        return response['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Error fetching insights from OpenAI: {e}"
 
@@ -96,19 +95,18 @@ def main():
                 st.subheader("AI Generated Insights")
                 st.write(ai_insights)
 
-         # Chat with Data Tab
+        # Chat with Data Tab
         with tab2:
             st.subheader("Chat with Data")
-            # Query for the data
             query = st.text_area("Chat with Dataframe")
             generate = st.button("Generate")
             if generate:
-               if query:
-                with st.spinner("OpenAI is generating an answer, please wait..."):
-                    llm = PandasAI_LLM(api_key=api_key)
-                    query_engine = SmartDataframe(df, config={"llm": llm})
-                    answer = query_engine.chat(query)
-                    st.write(answer)
+                if query:
+                    with st.spinner("OpenAI is generating an answer, please wait..."):
+                        llm = PandasAI_LLM(api_key=api_key)
+                        query_engine = SmartDataframe(df, config={"llm": llm})
+                        answer = query_engine.chat(query)
+                        st.write(answer)
 
         # Visualization Tab
         with tab3:
