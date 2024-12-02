@@ -7,6 +7,7 @@ from pandasai import SmartDataframe
 from pandasai.llm import OpenAI as PandasAI_LLM
 import os
 from dotenv import load_dotenv
+from PIL import Image  # For displaying images
 
 # Load environment variables
 load_dotenv()
@@ -42,7 +43,6 @@ def get_openai_insights(summary):
     )
     
     try:
-        # Using v1/chat/completions instead of v1/completions
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # Use the appropriate model here
             messages=[{"role": "system", "content": "You are a helpful data analyst."},
@@ -149,6 +149,12 @@ def main():
             # Display the plot if created
             if fig is not None:
                 st.plotly_chart(fig, use_container_width=True)
+
+            # Show the chart image (from the path you provided)
+            chart_path = "/mount/src/ag_analytic/exports/charts/temp_chart.png"  # Path to the chart image
+            if os.path.exists(chart_path):
+                img = Image.open(chart_path)
+                st.image(img, caption="Generated Pie Chart", use_column_width=True)
 
 if __name__ == "__main__":
     main()
