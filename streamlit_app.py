@@ -42,14 +42,13 @@ def get_openai_insights(summary):
     )
     
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful data analyst."},
-                      {"role": "user", "content": prompt}],
+        response = openai.Completion.create(
+            model="gpt-3.5-turbo",  # Using the newer method `openai.Completion.create` instead of `ChatCompletion`
+            prompt=prompt,
             max_tokens=200,
             temperature=0.5
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response['choices'][0]['text'].strip()
     except Exception as e:
         return f"Error fetching insights from OpenAI: {e}"
 
