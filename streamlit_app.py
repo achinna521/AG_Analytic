@@ -97,6 +97,7 @@ def main():
                 st.write(ai_insights)
 
         # Chat with Data Tab
+                # Chat with Data Tab
         with tab2:
             st.subheader("Chat with Data")
             query = st.text_area("Chat with Dataframe")
@@ -104,16 +105,28 @@ def main():
             if generate:
                 if query:
                     with st.spinner("OpenAI is generating an answer, please wait..."):
-                        llm = PandasAI_LLM(api_key=api_key)
-                        query_engine = SmartDataframe(df, config={"llm": llm})
-                        answer = query_engine.chat(query)
-                        st.write(answer)
+                        try:
+                            llm = PandasAI_LLM(api_key=api_key)
+                            query_engine = SmartDataframe(df, config={
+                                "llm": llm,
+                                "verbose": True,
+                                "is_conversational_answer": True
+                            })
+                            answer = query_engine.chat(query)
+                            
+                            # Check if response contains a file path for visualization
+                            if isinstance(answer, str) and answer.startswith("/"):
+                                if os.path.exists(answer):
+                                    img = Image.open(answer)
+                                    st.image(img, caption="Generated Chart", use_column_width=True)
+                                else:
+                                    st.write("AI generated a chart, but the file path does not exist.")
+                            else:
+                                st.write(answer)
 
-                        # Show the chart image (from the path you provided)
-                        chart_path = "/mount/src/ag_analytic/exports/charts/temp_chart.png"  # Path to the chart image
-                        if os.path.exists(chart_path):
-                            img = Image.open(chart_path)
-                            st.image(img, caption="Generated Chart", use_column_width=True)
+                        except Exception as e:
+                            st.error(f"Error processing query: {e}")
+
 
         # Visualization Tab
         with tab3:
